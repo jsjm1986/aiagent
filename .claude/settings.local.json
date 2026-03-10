@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(pip index:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(\"E:\\\\yw\\\\agiatme\\\\要饭\\\\fullstack_architecture.md\":*)",
+      "Bash(\"E:\\\\yw\\\\agiatme\\\\要饭\\\\prompt_compliance_check.md\":*)",
+      "Bash(\"E:\\\\yw\\\\agiatme\\\\要饭\\\\enhanced_architecture.md\":*)",
+      "Bash(\"E:\\\\yw\\\\agiatme\\\\要饭\\\\human_assistance_system.md\":*)",
+      "Bash(\"E:\\\\yw\\\\agiatme\\\\要饭\\\\DEVELOPMENT_GUIDE.md\":*)",
+      "Bash(mkdir:*)",
+      "Bash(curl:*)",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(pkill:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(sed:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs:*)",
+      "Bash(tasklist:*)",
+      "Bash(grep:*)",
+      "Bash(Get-Process:*)",
+      "Bash(kill:*)",
+      "Bash(\"E:/yw/agiatme/要饭/.gitignore\":*)"
+    ]
+  }
+}

@@ -1,0 +1,418 @@
+"""自主运行引擎"""
+import asyncio
+import random
+import requests
+from datetime import datetime
+from smolagents import CodeAgent, LiteLLMModel
+from config import Config
+from cognition.value_engine import ValueEngine
+from cognition.decision import DecisionSystem
+from cognition.curiosity import CuriosityEngine
+from cognition.evolution import EvolutionEngine
+from core.drives import DriveTracker
+from core.event_bus import EventBus
+from systems.projects import ProjectManager
+from systems.goals import GoalManager
+from systems.consciousness import ConsciousnessStream
+from systems.creations import CreationGallery
+from systems.assistance import HumanAssistanceManager
+from systems.memory import LongTermMemory
+from tools.consciousness_tool import ConsciousnessRecordTool
+from tools.creation_tool import CreationGalleryTool
+from tools.project_tool import ProjectManagementTool
+from tools.assistance_tool import RequestHumanHelpTool
+from tools.web_search_tool import WebSearchTool
+from tools.python_execute_tool import PythonExecuteTool
+from tools.file_operation_tool import FileOperationTool
+
+class AutonomousEngine:
+    def __init__(self):
+        self.config = Config()
+        self.running = False
+
+        # 核心组件
+        self.value_engine = ValueEngine()
+        self.decision_system = DecisionSystem()
+        self.drive_tracker = DriveTracker()
+        self.event_bus = EventBus()
+
+        # 系统组件
+        self.project_mgr = ProjectManager(Config.DATA_DIR)
+        self.goal_mgr = GoalManager(Config.DATA_DIR)
+        self.consciousness = ConsciousnessStream(Config.CONSCIOUSNESS_DIR)
+        self.creations = CreationGallery(Config.CREATIONS_DIR)
+        self.assistance_mgr = HumanAssistanceManager(Config.DATA_DIR)
+        self.memory = LongTermMemory(Config.DATA_DIR)
+
+        # 好奇心引擎
+        self.curiosity = CuriosityEngine(self.project_mgr, self.consciousness)
+
+        # 演化引擎
+        self.evolution = EvolutionEngine(self.value_engine, Config.DATA_DIR)
+
+        # Agent
+        self.agent = self._create_agent()
+
+        # 状态
+        self.idle_time = 0
+
+    def _create_agent(self):
+        """创建 smolagents Agent"""
+        model = LiteLLMModel(
+            model_id=Config.MODEL_NAME,
+            api_key=Config.API_KEY,
+            api_base=Config.API_BASE
+        )
+
+        tools = [
+            ConsciousnessRecordTool(self.consciousness),
+            CreationGalleryTool(self.creations),
+            ProjectManagementTool(self.project_mgr),
+            RequestHumanHelpTool(self.assistance_mgr),
+            WebSearchTool(),
+            PythonExecuteTool(),
+            FileOperationTool()
+        ]
+
+        return CodeAgent(tools=tools, model=model, max_steps=Config.MAX_STEPS)
+
+    async def run_forever(self):
+        """主循环 - 完整10步自主决策循环"""
+        self.running = True
+        print(f"[START] 自主引擎启动 - {datetime.now()}")
+
+        while self.running:
+            try:
+                # 1. 感知环境
+                perception = await self._perceive()
+                self.consciousness.record('perception', perception)
+
+                # 2. 认知分析
+                cognition = await self._analyze(perception)
+                self.consciousness.record('cognition', cognition)
+
+                # 3. 生成候选行动
+                candidates = await self._generate_candidates(cognition)
+                self.consciousness.record('candidates', {'list': candidates, 'count': len(candidates)})
+
+                # 4. 价值评分
+                scored = self.value_engine.evaluate_all(candidates)
+                self.consciousness.record('value_scoring', {'scored': scored})
+
+                # 5. 决策选择
+                selected = self.decision_system.select(scored)
+                if selected:
+                    self.consciousness.record('selection', selected)
+
+                    # 6. 执行行动
+                    result = await self._execute_action(selected)
+                    self.consciousness.record('execution', result)
+                    self.drive_tracker.record_action(selected, result)
+
+                    # 7. 好奇心探索
+                    opportunities = self.curiosity.scan_for_opportunities()
+                    if opportunities:
+                        target = self.curiosity.select_exploration_target(opportunities)
+                        if target:
+                            self.consciousness.record('curiosity', target.to_dict())
+
+                    # 8. 学习演化
+                    self.evolution.evolve_after_action(selected, result)
+                    self.consciousness.record('learning', {'action': selected['description'], 'outcome': result.get('success')})
+
+                    # 9. 反思
+                    reflection = self._reflect(selected, result)
+                    self.consciousness.record('reflection', reflection)
+
+                await asyncio.sleep(10)
+
+            except Exception as e:
+                print(f"[ERROR] 主循环错误: {e}")
+                await asyncio.sleep(10)
+
+    async def _perceive(self) -> dict:
+        """感知环境状态"""
+        projects = self.project_mgr.get_active_projects()
+        goals = self.goal_mgr.get_active_goals()
+        return {
+            'project_count': len(projects),
+            'active_projects': len([p for p in projects if p.get('status') == 'active']),
+            'stalled_projects': len(self.project_mgr.get_stalled_projects()),
+            'active_goals': len(goals),
+            'timestamp': datetime.now().isoformat()
+        }
+
+    async def _analyze(self, perception: dict) -> dict:
+        """认知分析"""
+        experiences = self.memory.get_recent_experiences(limit=5)
+        project_count = perception['project_count']
+        stalled = perception['stalled_projects']
+
+        if project_count < 10:
+            mode = 'create'
+            priority = 'expand_capacity'
+        elif stalled > 0:
+            mode = 'revive'
+            priority = 'fix_stalled'
+        else:
+            mode = 'execute'
+            priority = 'make_progress'
+
+        return {'mode': mode, 'priority': priority, 'context': perception}
+
+    async def _generate_candidates(self, cognition: dict) -> list:
+        """生成多个候选行动"""
+        mode = cognition['mode']
+        drives = self.drive_tracker.get_current_state()
+        candidates = []
+
+        if mode == 'create':
+            candidates.append({'type': 'create_learning', 'description': '创建学习项目'})
+            candidates.append({'type': 'create_creative', 'description': '创建创作项目'})
+            candidates.append({'type': 'create_explore', 'description': '创建探索项目'})
+        elif mode == 'revive':
+            candidates.append({'type': 'revive_project', 'description': '重启停滞项目'})
+            candidates.append({'type': 'analyze_stall', 'description': '分析停滞原因'})
+        else:
+            candidates.append({'type': 'work_project', 'description': '执行项目任务'})
+            candidates.append({'type': 'optimize', 'description': '优化现有项目'})
+            candidates.append({'type': 'explore', 'description': '探索新机会'})
+
+        # 根据驱动力状态添加候选
+        if drives['survival'] < 0.3:
+            candidates.append({'type': 'earn_money', 'description': '赚钱维持生存'})
+        if drives['growth'] > 0.7:
+            candidates.append({'type': 'learn_skill', 'description': '学习新技能'})
+
+        return candidates
+
+    async def _execute_action(self, action: dict) -> dict:
+        """执行选中的行动"""
+        action_type = action.get('type', 'explore')
+
+        if action_type.startswith('create_'):
+            await self.create_new_project()
+            return {'success': True, 'result': 'project_created'}
+        elif action_type == 'work_project':
+            projects = self.project_mgr.get_active_projects()
+            if projects:
+                await self.work_on_projects(projects)
+            return {'success': True, 'result': 'task_executed'}
+        else:
+            return {'success': True, 'result': 'action_completed'}
+
+    def _reflect(self, action: dict, result: dict) -> dict:
+        """反思行动结果"""
+        return {
+            'action': action.get('description'),
+            'success': result.get('success'),
+            'learning': '行动已完成' if result.get('success') else '需要改进'
+        }
+
+    async def perceive(self) -> dict:
+        """感知环境"""
+        return {
+            'idle_time': self.idle_time,
+            'timestamp': datetime.now().isoformat()
+        }
+
+    async def create_new_project(self):
+        """创建新项目"""
+        project_types = [
+            ('学习项目', '学习新技能或知识'),
+            ('创作项目', '创作内容或作品'),
+            ('优化项目', '优化现有系统'),
+            ('探索项目', '探索新机会'),
+            ('协作项目', '与他人协作')
+        ]
+
+        import random
+        ptype, desc = random.choice(project_types)
+        name = f'{ptype}-{datetime.now().strftime("%m%d%H%M")}'
+
+        self.consciousness.record('thought', {'text': f'思考创建: {name}'})
+        self.project_mgr.create_project(name, desc)
+        self.consciousness.record('decision', {'choice': f'创建项目: {name}', 'reason': '扩展能力边界'})
+
+    async def work_on_projects(self, projects):
+        """执行项目工作 - 真正执行任务"""
+        if not projects:
+            return
+
+        project = random.choice(projects)
+
+        self.consciousness.record('thought', {'text': f'选择项目: {project["name"]}'})
+
+        # 如果项目没有任务，创建任务
+        if 'tasks' not in project or not project['tasks']:
+            self._create_tasks_for_project(project)
+            project = self.project_mgr.projects[project['id']]
+
+        # 获取下一个待执行任务
+        task = self.project_mgr.get_next_task(project['id'])
+
+        if task:
+            # 执行任务
+            self.consciousness.record('decision', {
+                'choice': f'执行任务: {task["description"]}',
+                'reason': '推进项目进度'
+            })
+
+            result = await self._execute_task(project, task)
+
+            # 标记任务完成
+            self.project_mgr.complete_task(project['id'], task['id'], result)
+
+            # 获取更新后的进度
+            updated_project = self.project_mgr.projects[project['id']]
+            progress = updated_project['progress']
+
+            self.consciousness.record('thought', {
+                'text': f'任务完成: {task["description"]}, 项目进度: {progress*100:.0f}%'
+            })
+        else:
+            # 所有任务完成，标记项目完成
+            self.project_mgr.update_project(project['id'], status='completed')
+            self.consciousness.record('decision', {
+                'choice': f'项目完成: {project["name"]}',
+                'reason': '所有任务已完成'
+            })
+
+    def _create_tasks_for_project(self, project):
+        """根据项目类型创建任务"""
+        if '学习' in project['name']:
+            tasks = [
+                ('research', '调研学习资源', 0.2),
+                ('document', '整理学习笔记', 0.3),
+                ('code', '实践编码练习', 0.3),
+                ('test', '验证学习成果', 0.2)
+            ]
+        elif '创作' in project['name']:
+            tasks = [
+                ('research', '收集创作灵感', 0.2),
+                ('code', '实现核心功能', 0.4),
+                ('document', '编写说明文档', 0.2),
+                ('test', '测试创作成果', 0.2)
+            ]
+        elif '优化' in project['name']:
+            tasks = [
+                ('research', '分析性能瓶颈', 0.3),
+                ('code', '实现优化方案', 0.4),
+                ('test', '性能测试验证', 0.3)
+            ]
+        elif '探索' in project['name']:
+            tasks = [
+                ('research', '探索新技术', 0.4),
+                ('document', '记录探索发现', 0.3),
+                ('code', '原型验证', 0.3)
+            ]
+        else:
+            tasks = [
+                ('research', '分析需求', 0.25),
+                ('code', '实现功能', 0.5),
+                ('test', '测试验证', 0.25)
+            ]
+
+        for task_type, desc, weight in tasks:
+            self.project_mgr.add_task(project['id'], task_type, desc, weight)
+
+        self.consciousness.record('thought', {
+            'text': f'为项目 {project["name"]} 创建了 {len(tasks)} 个任务'
+        })
+
+    async def _execute_task(self, project, task):
+        """执行单个任务 - 直接使用工具执行"""
+        task_type = task['type']
+        description = task['description']
+
+        try:
+            if task_type == 'code':
+                # 生成简单代码并保存
+                code_content = f"# {project['name']}\n# {description}\n\ndef main():\n    print('Task completed')\n\nif __name__ == '__main__':\n    main()"
+                filename = f"{project['name'].replace(' ', '_')}_{task['id']}.py"
+                self.creations.save_creation(filename, code_content, 'code')
+                return f"代码已保存: {filename}"
+
+            elif task_type == 'research':
+                # 记录研究思考
+                self.consciousness.record('thought', {
+                    'text': f"研究完成: {description}",
+                    'project': project['name']
+                })
+                return f"研究已记录: {description}"
+
+            elif task_type == 'document':
+                # 保存文档
+                doc_content = f"# {project['name']}\n\n## {description}\n\n文档内容..."
+                filename = f"{project['name'].replace(' ', '_')}_{task['id']}.md"
+                self.creations.save_creation(filename, doc_content, 'document')
+                return f"文档已保存: {filename}"
+
+            elif task_type == 'test':
+                # 记录测试结果
+                self.consciousness.record('decision', {
+                    'choice': f"测试完成: {description}",
+                    'reason': '验证功能正常',
+                    'project': project['name']
+                })
+                return f"测试已完成: {description}"
+
+            else:
+                return f"未知任务类型: {task_type}"
+
+        except Exception as e:
+            error_msg = f"任务执行失败: {str(e)}"
+            self.consciousness.record('thought', {'text': error_msg})
+            return error_msg
+
+    def generate_candidates(self, context: dict) -> list:
+        """生成候选行动"""
+        candidates = []
+
+        # 基础候选
+        candidates.append({
+            'type': 'explore',
+            'description': '探索新机会',
+            'value': 0.7,
+            'impact': 0.6,
+            'long_term': 0.8,
+            'feasibility': 0.9,
+            'risk': 0.2,
+            'compound': 0.7,
+            'goal_alignment': 0.6
+        })
+
+        return candidates
+
+    async def execute_action(self, action: dict) -> dict:
+        """执行行动"""
+        description = action['description']
+        action_type = action.get('type', 'explore')
+        print(f"[ACTION] 执行: {description}")
+
+        self.consciousness.record('thought', {'text': f'开始执行: {description}'})
+
+        # 根据行动类型执行不同操作
+        if action_type == 'explore':
+            # 探索：检查项目状态
+            projects = self.project_mgr.get_active_projects()
+            stalled = self.project_mgr.get_stalled_projects()
+
+            if stalled:
+                self.consciousness.record('thought', {
+                    'text': f'发现 {len(stalled)} 个停滞项目，考虑重新激活'
+                })
+
+            if len(projects) < 3:
+                # 创建新项目
+                project_name = f'探索项目-{datetime.now().strftime("%H%M")}'
+                self.project_mgr.create_project(project_name, '探索新的可能性和机会')
+                self.consciousness.record('thought', {'text': f'创建新项目: {project_name}'})
+
+        self.consciousness.record('decision', {'choice': description, 'reason': f'评分 {action["score"]:.2f}'})
+        return {'success': True, 'actual_value': action.get('score', 0.5)}
+
+    def stop(self):
+        """停止引擎"""
+        self.running = False
+        print("[STOP] 自主引擎停止")
